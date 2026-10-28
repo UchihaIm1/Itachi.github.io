@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Лаборатория Солнечной системы</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#000;
+    font-family:'Segoe UI', Arial, sans-serif; color:#dfe6ee; }
+  #cv { display:block; position:fixed; inset:0; cursor:grab; }
+  #cv.dragging { cursor:grabbing; }
+  #header {
+    position:fixed; top:0; left:0; right:0; padding:14px 22px; z-index:10;
+    display:flex; justify-content:space-between; align-items:center; pointer-events:none;
+    background:linear-gradient(180deg, rgba(0,0,0,.7), transparent);
+  }
+  #header h1 { font-size:19px; font-weight:600; letter-spacing:2px; color:#ffd97a;
+    text-shadow:0 0 14px rgba(255,180,60,.5); }
+  #header .hint { font-size:12px; color:#9fb2c8; }
+  #info-panel {
+    position:fixed; top:70px; right:-440px; width:410px; max-height:calc(100vh - 100px);
+    overflow-y:auto; padding:24px; border-radius:14px; z-index:20;
+    background:rgba(10,14,24,.93); border:1px solid rgba(120,160,255,.25);
+    box-shadow:0 0 40px rgba(60,120,255,.15); backdrop-filter:blur(8px);
+    transition:right .5s cubic-bezier(.22,.9,.3,1);
+  }
+  #info-panel.open { right:16px; }
+  #info-panel h2 { color:#ffd97a; margin-bottom:2px; font-size:23px; }
+  #info-panel .type { color:#7fa8e0; font-size:11px; text-transform:uppercase;
+    letter-spacing:2px; margin-bottom:12px; }
+  #info-panel .desc { font-size:13px; line-height:1.6; color:#c4d2e4; margin:12px 0; }
+  #info-panel table { width:100%; border-collapse:collapse; font-size:13px; }
+  #info-panel td { padding:6px 4px; border-bottom:1px solid rgba(255,255,255,.07); vertical-align:top; }
+  #info-panel td:first-child { color:#8ea4bf; width:46%; }
+  #info-panel td:last-child { color:#eef3fa; }
+  #info-panel h3 { color:#a8c8ff; font-size:15px; margin:16px 0 8px;
+    border-left:3px solid #ffd97a; padding-left:8px; }
+  #close-btn { position:absolute; top:12px; right:14px; background:none; border:none;
+    color:#8ea4bf; font-size:22px; cursor:pointer; }
+  #close-btn:hover { color:#fff; }
+  #belt-btn { position:fixed; bottom:20px; left:20px; z-index:15; cursor:pointer;
+    padding:10px 18px; border-radius:10px; font-size:13px; color:#dfe6ee;
+    background:rgba(20,28,48,.85); border:1px solid rgba(255,217,122,.4); transition:all .25s; }
+  #belt-btn:hover { background:rgba(50,60,90,.9); box-shadow:0 0 16px rgba(255,217,122,.3); }
+  #label { position:fixed; padding:4px 10px; border-radius:8px; background:rgba(0,0,0,.7);
+    border:1px solid rgba(255,255,255,.2); font-size:11px; color:#fff;
+    pointer-events:none; transform:translate(-50%,-160%); display:none; z-index:5; white-space:nowrap; }
+  #loader { position:fixed; inset:0; background:#000; z-index:100;
+    display:flex; flex-direction:column; justify-content:center; align-items:center; gap:18px;
+    animation:hideLoader .8s ease 1.2s forwards; }
+  @keyframes hideLoader { to { opacity:0; visibility:hidden; } }
+  #loader .sun { width:70px; height:70px; border-radius:50%;
+    background:radial-gradient(circle, #fff7d6, #ffb640 60%, transparent 72%);
+    animation:pulse 1.6s ease-in-out infinite; box-shadow:0 0 60px 20px rgba(255,180,60,.45); }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.18)} }
+  #loader p { color:#9fb2c8; letter-spacing:3px; font-size:13px; }
+  #speed-panel { position:fixed; bottom:20px; right:20px; z-index:15;
+    background:rgba(20,28,48,.85); border:1px solid rgba(120,160,255,.25);
+    border-radius:10px; padding:10px 14px; display:flex; gap:8px; align-items:center; }
+  #speed-panel button { background:rgba(60,80,120,.5); border:1px solid rgba(150,180,255,.3);
+    color:#dfe6ee; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:13px; }
+  #speed-panel button:hover { background:rgba(90,110,160,.6); }
+  #speed-val { font-size:13px; color:#ffd97a; min-width:46px; text-align:center; }
+  .ctl-btn { position:fixed; bottom:20px; z-index:15; cursor:pointer;
+    padding:10px 18px; border-radius:10px; font-size:13px; color:#dfe6ee;
+    background:rgba(20,28,48,.85); border:1px solid rgba(255,217,122,.4); transition:all .25s; }
+  .ctl-btn:hover { background:rgba(50,60,90,.9); box-shadow:0 0 16px rgba(255,217,122,.3); }
+  #trail-btn { left:290px; }
+  #follow-btn { left:440px; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="header">
+  <h1>🌌 ЛАБОРАТОРИЯ СОЛНЕЧНОЙ СИСТЕМЫ</h1>
+  <div class="hint">ЛКМ — сдвиг · ПКМ или Shift+ЛКМ — вращение на 360° (или стрелки) · Колесо — зум · Клик по объекту — информация</div>
+</div>
+<div id="label"></div>
+<div id="info-panel">
+  <button id="close-btn">✕</button>
+  <h2 id="obj-name"></h2>
+  <div class="type" id="obj-type"></div>
+  <div class="desc" id="obj-desc"></div>
+  <table id="obj-table"></table>
+  <div id="obj-extra"></div>
+</div>
+<button id="belt-btn">☄ Пояс астероидов и кометы</button>
+<button id="trail-btn" class="ctl-btn">🌀 Следы: вкл</button>
+<button id="follow-btn" class="ctl-btn">🎥 Камера: за Солнцем</button>
+<div id="speed-panel">
+  <button id="spd-down">−</button><span id="speed-val">×1</span><button id="spd-up">+</button>
+  <button id="spd-reset" title="Сброс камеры">⟲</button>
+</div>
+<div id="loader"><div class="sun"></div><p>ЗАГРУЗКА СОЛНЕЧНОЙ СИСТЕМЫ...</p></div>
+
+<script>
+'use strict';
+// ==================== БАЗА ЗНАНИЙ ====================
+const INFO = {
+  sun:{name:"Солнце",type:"Звезда · G2V",
+    desc:"Солнце — звезда в центре Солнечной системы, жёлтый карлик спектрального класса G2V. В нём сосредоточено 99,86% всей массы системы. Оно сформировалось около 4,6 млрд лет назад. Солнце движется вокруг центра Млечного Пути со скоростью ~230 км/с, совершая полный оборот за ~230 млн лет («космический год»). Через ~5 млрд лет Солнце станет красным гигантом.",
+    facts:[["Возраст","≈ 4,6 млрд лет"],["Диаметр","1 392 700 км (109 × Земля)"],["Масса","1,989 × 10³⁰ кг"],["Температура поверхности","≈ 5 500 °C"],["Температура ядра","≈ 15 000 000 °C"],["Период вращения","≈ 25 дней"],["До центра Галактики","≈ 26 000 св. лет"],["Скорость по галактической орбите","≈ 230 км/с"]]},
+  mercury:{name:"Меркурий",type:"Планета · Каменистая",
+    desc:"Меркурий — ближайшая к Солнцу и самая маленькая планета системы. Покрыт кратерами, как Луна, но имеет огромное железное ядро — около 85% радиуса планеты. Из-за отсутствия атмосферы перепады температур достигают 600 °C. Спутников нет.",
+    facts:[["Расстояние от Солнца","57,9 млн км (0,39 а.е.)"],["Диаметр","4 879 км"],["Период обращения","88 земных дней"],["Продолжительность суток","58,6 земных дней"],["Температура","от −180 до +430 °C"],["Спутники","Нет"]]},
+  venus:{name:"Венера",type:"Планета · Каменистая",
+    desc:"Венера — самая горячая планета из-за парникового эффекта: плотная атмосфера из CO₂ и облака серной кислоты удерживают тепло. Вращается в обратную сторону, а её сутки длиннее года. Давление на поверхности — как на глубине 900 м в океане Земли. Спутников нет.",
+    facts:[["Расстояние от Солнца","108,2 млн км (0,72 а.е.)"],["Диаметр","12 104 км"],["Период обращения","225 земных дней"],["Продолжительность суток","243 дня (ретроградно)"],["Температура поверхности","≈ +465 °C"],["Атмосфера","CO₂, 92 атм."],["Спутники","Нет"]]},
+  earth:{name:"Земля",type:"Планета · Каменистая",
+    desc:"Земля — единственная известная планета с жизнью. Единственная планета с жидкой водой на поверхности, тектоникой плит и мощным магнитным полем, защищающим от солнечного ветра. Её спутник Луна сформировался после столкновения Земли с протопланетой Тейя.",
+    facts:[["Расстояние от Солнца","149,6 млн км (1 а.е.)"],["Диаметр","12 742 км"],["Период обращения","365,25 дней"],["Продолжительность суток","23 ч 56 мин"],["Температура","в среднем +15 °C"],["Атмосфера","N₂ 78%, O₂ 21%"],["Спутники","1 (Луна)"]]},
+  moon:{name:"Луна",type:"Спутник Земли",
+    desc:"Луна — единственный естественный спутник Земли и пятый по величине спутник Солнечной системы. Всегда обращена к Земле одной стороной (синхронное вращение). Вызывает приливы и отливы.",
+    facts:[["Расстояние от Земли","384 400 км"],["Диаметр","3 474 км"],["Период обращения","27,3 земных дней"],["Температура","от −170 до +120 °C"]]},
+  mars:{name:"Марс",type:"Планета · Каменистая",
+    desc:"Марс — «красная планета» из-за оксида железа в реголите. Имеет вулкан Олимп — крупнейший в Солнечной системе (21,9 км высотой), каньоны Маринер и полярные шапки из льда. В прошлом имел реки и океаны. Главная цель планов колонизации человечества.",
+    facts:[["Расстояние от Солнца","227,9 млн км (1,52 а.е.)"],["Диаметр","6 779 км"],["Период обращения","687 земных дней"],["Продолжительность суток","24 ч 37 мин"],["Температура","в среднем −63 °C"],["Атмосфера","CO₂, 0,6% от земной"],["Спутники","2 (Фобос, Деймос)"]]},
+  phobos:{name:"Фобос",type:"Спутник Марса",
+    desc:"Фобос — крупнейший спутник Марса. Приближается к планете на 1,8 м за столетие и через ~50 млн лет либо разрушится, сформировав кольцо, либо упадёт на Марс. Покрыт бороздами Стикни.",
+    facts:[["Размеры","27 × 22 × 18 км"],["Период обращения","7 ч 39 мин"]]},
+  deimos:{name:"Деймос",type:"Спутник Марса",
+    desc:"Деймос — меньший спутник Марса. Имеет гладкую поверхность из-за слоя реголита. Внешне похож на астероид.",
+    facts:[["Диаметр","≈ 12 км"],["Период обращения","30,3 часа"]]},
+  jupiter:{name:"Юпитер",type:"Планета · Газовый гигант",
+    desc:"Юпитер — крупнейшая планета: её масса в 2,5 раза больше суммарной массы всех остальных планет. Большое красное пятно — гигантский шторм, бушующий минимум 350 лет. Сильнейшее магнитное поле. Играет роль «щита» от комет и астероидов.",
+    facts:[["Расстояние от Солнца","778,5 млн км (5,2 а.е.)"],["Диаметр","139 820 км"],["Период обращения","11,9 года"],["Продолжительность суток","9 ч 56 мин"],["Температура верхних слоёв","≈ −110 °C"],["Спутников","95+ (4 галилеевых)"],["Большое красное пятно","Шторм шириной ~16 000 км"]]},
+  io:{name:"Ио",type:"Спутник Юпитера · Галилеев",
+    desc:"Ио — самый вулканически активный объект Солнечной системы: более 400 действующих вулканов. Поверхность покрыта сернистыми отложениями.",
+    facts:[["Диаметр","3 643 км"],["Период обращения","1,77 дня"]]},
+  europa:{name:"Европа",type:"Спутник Юпитера · Галилеев",
+    desc:"Европа — ледяной спутник с глобальным подповерхностным океаном под ледяной корой. Главная цель в поисках внеземной жизни. Поверхность покрыта линиями-трещинами.",
+    facts:[["Диаметр","3 122 км"],["Толщина ледяной коры","10–30 км"]]},
+  ganymede:{name:"Ганимед",type:"Спутник Юпитера · Галилеев",
+    desc:"Ганимед — крупнейший спутник Солнечной системы, больше Меркурия. Единственный спутник со своим магнитным полем. Имеет подледный океан.",
+    facts:[["Диаметр","5 268 км"],["Период обращения","7,15 дней"]]},
+  callisto:{name:"Каллисто",type:"Спутник Юпитера · Галилеев",
+    desc:"Каллисто — самый сильно кратеризованный объект Солнечной системы. Поверхность почти не изменилась за 4 млрд лет.",
+    facts:[["Диаметр","4 821 км"],["Период обращения","16,7 дней"]]},
+  saturn:{name:"Сатурн",type:"Планета · Газовый гигант",
+    desc:"Сатурн знаменит кольцами из льда и камня: ширина ~280 000 км при толщине всего ~10–1000 м. Средняя плотность планеты меньше плотности воды — он «плавал» бы в достаточно большом океане.",
+    facts:[["Расстояние от Солнца","1,43 млрд км (9,5 а.е.)"],["Диаметр","116 460 км"],["Период обращения","29,4 года"],["Продолжительность суток","10 ч 42 мин"],["Температура","≈ −140 °C"],["Спутников","146 (крупнейший — Титан)"],["Кольца","Лёд и камень"]]},
+  titan:{name:"Титан",type:"Спутник Сатурна",
+    desc:"Титан — единственный спутник с плотной атмосферой (азот + метан) и жидкостью на поверхности — метановыми озёрами и моря. Зонд «Гюйгенс» совершил посадку на нём в 2005 году.",
+    facts:[["Диаметр","5 150 км"],["Атмосферное давление","1,5 атм."]]},
+  uranus:{name:"Уран",type:"Планета · Ледяной гигант",
+    desc:"Уран уникален: его ось вращения лежит «на боку» (наклон 98°), поэтому он «катится» по орбите. Состоит из водяного льда, аммиака и метана (голубой цвет — метан). Имеет 13 колец.",
+    facts:[["Расстояние от Солнца","2,87 млрд км (19,2 а.е.)"],["Диаметр","50 724 км"],["Период обращения","84 года"],["Продолжительность суток","17 ч 14 мин (ретроградно)"],["Температура","≈ −195 °C"],["Спутников","28"]]},
+  neptune:{name:"Нептун",type:"Планета · Ледяной гигант",
+    desc:"Нептун — самая дальняя планета. Его открыли «на кончике пера» — по гравитационным возмущениям орбиты Урана. Самые сильные ветры Солнечной системы — до 2100 км/ч. Спутник Тритон извергает гейзеры азота.",
+    facts:[["Расстояние от Солнца","4,50 млрд км (30,1 а.е.)"],["Диаметр","49 244 км"],["Период обращения","164,8 года"],["Продолжительность суток","16 ч 6 мин"],["Температура","≈ −200 °C"],["Спутников","16"]]},
+  triton:{name:"Тритон",type:"Спутник Нептуна",
+    desc:"Тритон — крупнейший спутник Нептуна, вращается в обратную сторону орбите: вероятно, захвачен. Имеет азотные гейзеры и криовулканы.",
+    facts:[["Диаметр","2 707 км"],["Температура поверхности","−235 °C"]]},
+  sirius:{name:"Сириус",type:"Ближайшая звезда (после Солнца)",
+    desc:"Сириус («Пёс») — самая яркая звезда ночного неба, находится в 8,6 световых годах от нас. Двойная звезда: Сириус A и белый карлик Сириус B. Виден на фоне за планетами этой модели.",
+    facts:[["Расстояние","8,6 св. лет"],["Класс","A1V (голубо-белый)"],["Яркость","−1,46ᵐ (ярчайшая)"]]},
+  alpha:{name:"Альфа Центавра",type:"Ближайшая звёздная система",
+    desc:"Альфа Центавра — ближайшая к Солнцу звёздная система (4,24–4,37 св. лет). Три звезды: Альфа Центавра A, B и красный карлик Проксима Центавра. У Проксимы открыта планета Проксима b в «зоне обитаемости».",
+    facts:[["Расстояние","4,24 св. лет"],["Состав","3 звезды"],["Экзопланета","Проксима b (возможно обитаема)"]]},
+  betelgeuse:{name:"Бетельгейзе",type:"Красный сверхгигант",
+    desc:"Бетельгейзе — красный сверхгигант в созвездии Ориона. Если поместить его в центр Солнечной системы, он поглотил бы орбиты планет вплоть до Марса. В ближайшие ~100 тыс. лет взорвётся сверхновой.",
+    facts:[["Расстояние","~550 св. лет"],["Диаметр","~ 900 × Солнце"],["Будущее","Взрыв сверхновой"]]},
+  vega:{name:"Вега",type:"Звезда · A0V",
+    desc:"Вега — пятая по яркости звезда неба, в 25 св. годах от нас. Когда-то была северной полярной звездой и снова станет ею через ~12 000 лет.",
+    facts:[["Расстояние","25 св. лет"],["Вращается","Так быстро, что сплюснута"]]},
+  belt:{name:"Пояс астероидов",type:"Область · Между Марсом и Юпитером",
+    desc:"Пояс астероидов — область между орбитами Марса и Юпитера (2,2–3,2 а.е.) с миллионами каменных и металлических тел — остатками протопланетного диска, так и не ставшими планетой из-за гравитации Юпитера. Общая масса пояса меньше массы Луны.",
+    facts:[["Объектов >1 км","1–2 млн"],["Общая масса","≈ 3% массы Луны"],["Крупнейший объект","Церера (карликовая планета)"],["Расстояние от Солнца","2,2–3,2 а.е."]],
+    extra:{title:"Известные астероиды и кометы",items:[
+      ["Церера","Карликовая планета, ⌀ 940 км. Первый открытый астероид (1801). Зонд Dawn изучал её в 2015 г."],
+      ["Веста","Второй по массе астероид, ⌀ 525 км. Гигантский кратер Реасильвия."],
+      ["Паллада","Третий по массе, ⌀ 513 км. Открыт в 1802 г."],
+      ["Гигея","Четвёртый по массе, ⌀ 434 км. Возможно карликовая планета."],
+      ["Эрос","Ближайший к Земле астероид, ⌀ 16,8 км. В 2001 г. зонд NEAR Shoemaker совершил посадку на нём."],
+      ["Итокава","Астероид, с которого зонд «Хаябуса» доставил образцы на Землю (2010)."],
+      ["Бенну","⌀ 490 м. Зонд OSIRIS-REx доставил его образцы в 2023 г."],
+      ["Комета Галлея","Самая известная комета, период ~76 лет. Следующий визит — 2061 г."],
+      ["Комета Чурюмова—Герасименко","Комета, у которой в 2014 г. аппарат Philae совершил посадку."],
+      ["Арарокот","Самый далёкий объект, изученный аппаратом (New Horizons, 2019 г.)."]
+    ]}}
+};
+
+// ==================== КАМЕРА (3D) ====================
+// Орбитальная плоскость — XY, ось полёта Солнца — Z (на экране идёт слева направо).
+// ПКМ-перетаскивание: по горизонтали — наклон ракурса, по вертикали — вращение вокруг оси полёта.
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let W, H, DPR;
+function resize(){
+  DPR = Math.min(devicePixelRatio||1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR;
+  cv.style.width = W+'px'; cv.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+addEventListener('resize', resize); resize();
+
+const VZ = 10;         // скорость полёта Солнца (ед/с симуляции)
+const TRAIL_T = 80;    // длина следов (с симуляции)
+const TILT_MIN = 0.12, TILT_MAX = Math.PI/2;
+const cam = { x:0, y:0, z:0, scale:0.8, rot:0, tilt:0.6 };
+let trailsOn = true, followSun = true;
+
+// мир -> экран (ортографическая проекция); третье значение — глубина (больше = дальше)
+function proj(wx, wy, wz){
+  const dx = wx-cam.x, dy = wy-cam.y, dz = wz-cam.z;
+  const c = Math.cos(cam.rot), s = Math.sin(cam.rot);
+  const xr = dx*c - dy*s, yr = dx*s + dy*c;
+  const st = Math.sin(cam.tilt), ct = Math.cos(cam.tilt);
+  return [W/2 + (dz*ct + xr*st)*cam.scale, H/2 + yr*cam.scale, dz*st - xr*ct];
+}
+// экран -> точка орбитальной плоскости на уровне камеры (зум к курсору)
+function s2plane(sx, sy){
+  const st = Math.sin(cam.tilt);
+  if(Math.abs(st) < 0.15) return null;
+  const xr = (sx-W/2)/(cam.scale*st), yr = (sy-H/2)/cam.scale;
+  const c = Math.cos(cam.rot), s = Math.sin(cam.rot);
+  return [cam.x + xr*c + yr*s, cam.y - xr*s + yr*c];
+}
+
+// ==================== МОДЕЛЬ СИСТЕМЫ ====================
+// [ключ, цвет, радиус орбиты, размер, угловая скорость рад/с]
+const PLANETS = [
+  ['mercury', 0xb8a99a, 80, 3.4, 0.55],
+  ['venus',   0xe8c46a, 118, 5.6, 0.38],
+  ['earth',   0x4d8fd1, 160, 6.2, 0.30],
+  ['mars',    0xd1683a, 205, 4.6, 0.24],
+  ['jupiter', 0xd8a96a, 360, 17, 0.13],
+  ['saturn',  0xe0c98a, 470, 14.5, 0.095],
+  ['uranus',  0x7fd4d8, 580, 9.5, 0.065],
+  ['neptune', 0x4d6fd8, 680, 9.0, 0.05]
+];
+// [ключ, родитель, размер, радиус орбиты, скорость]
+const MOONS = [
+  ['moon','earth',1.8,14,1.2],
+  ['phobos','mars',1.0,9,1.6],
+  ['deimos','mars',0.8,14,1.1],
+  ['io','jupiter',1.6,24,1.5],
+  ['europa','jupiter',1.5,30,1.15],
+  ['ganymede','jupiter',2.2,37,0.8],
+  ['callisto','jupiter',2.0,45,0.55],
+  ['titan','saturn',2.2,26,0.9],
+  ['triton','neptune',1.6,18,1.0]
+];
+const planetByKey = {}; PLANETS.forEach(p=>planetByKey[p[0]]=p);
+const moonByKey = {}; MOONS.forEach(m=>moonByKey[m[0]]=m);
+
+PLANETS.forEach((p,i)=>{ p.phase = i*1.35; });
+MOONS.forEach((m,i)=>{ m.phase = i*2.1; });
+
+// пояс астероидов
+const beltRocks = [];
+for(let i=0;i<1600;i++){
+  const r = 250 + Math.random()*65;
+  beltRocks.push({ a: Math.random()*Math.PI*2, r, sz: 0.5+Math.random()*1.2, sp: 0.3*Math.pow(282/r, 1.5) });
+}
+
+// далёкие звёзды: слои параллакса, медленно уплывают назад
+const bgStars = [];
+for(let i=0;i<650;i++){
+  const d = 0.12 + Math.pow(Math.random(),1.6)*0.88;
+  bgStars.push({ u:Math.random(), v:Math.random(), d,
+    sz: d>0.8 ? 2 : (d>0.45 ? 1.5 : 1),
+    col: ['#ffffff','#cfe0ff','#ffe0b0','#aaccff'][Math.floor(Math.random()*4)],
+    tw: Math.random()*Math.PI*2 });
+}
+const NEAR_STARS = [
+  {key:'sirius',   name:'Сириус',      col:'#cfe0ff', u:0.16, v:0.22, sz:5},
+  {key:'alpha',    name:'Альфа Центавра', col:'#fff3d0', u:0.62, v:0.12, sz:4.5},
+  {key:'betelgeuse',name:'Бетельгейзе', col:'#ff9a70', u:0.42, v:0.86, sz:5},
+  {key:'vega',     name:'Вега',        col:'#d0e8ff', u:0.86, v:0.78, sz:4}
+];
+
+// космическая пыль: стоит в мире на месте, а Солнце пролетает сквозь неё — так видна скорость
+const DUST_L = 3600;
+const DUST = [];
+for(let i=0;i<340;i++){
+  const a = Math.random()*Math.PI*2, r = 40 + Math.sqrt(Math.random())*820;
+  DUST.push({ x:Math.cos(a)*r, y:Math.sin(a)*r, z0:Math.random()*DUST_L,
+    sz:0.7+Math.random()*1.5, col:['#cfe0ff','#ffe9c0','#ffffff'][Math.floor(Math.random()*3)] });
+}
+
+let simT = Math.random()*100, speed = 1;
+const SUN_R = 30;
+
+// Солнце летит по прямой; планеты кружатся вокруг него => винтовые линии
+function sunPos(t){ return [0, 0, VZ*t]; }
+function planetPos(p, t){
+  const a = p.phase + t*p[4];
+  return [Math.cos(a)*p[2], Math.sin(a)*p[2], VZ*t];
+}
+function moonPos(m, t){
+  const pp = planetPos(planetByKey[m[1]], t);
+  const a = m.phase + t*m[4];
+  return [pp[0]+Math.cos(a)*m[3], pp[1]+Math.sin(a)*m[3], pp[2]];
+}
+function homeCam(){
+  cam.x = 0; cam.y = 0; cam.rot = 0; cam.tilt = 0.6;
+  cam.scale = Math.min(0.8, Math.max(0.3, H/1450));
+  // Солнце правее центра: слева остаётся место для следов
+  cam.z = sunPos(simT)[2] - 0.2*W/(cam.scale*Math.cos(cam.tilt));
+}
+homeCam();
+
+// ==================== РИСОВАНИЕ ====================
+function lighten(n, k){
+  const r = (n>>16)&255, g = (n>>8)&255, b = n&255;
+  return [Math.round(r+(255-r)*k), Math.round(g+(255-g)*k), Math.round(b+(255-b)*k)];
+}
+
+function drawBody(sx, sy, r, color, glow){
+  if(glow){
+    const g = ctx.createRadialGradient(sx,sy,r*0.4, sx,sy,r*3.2);
+    g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.35; ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(sx,sy,r*3.2,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  const g2 = ctx.createRadialGradient(sx-r*0.35, sy-r*0.35, r*0.1, sx, sy, r);
+  g2.addColorStop(0, '#ffffff'); g2.addColorStop(0.25, color); g2.addColorStop(1, '#050810');
+  ctx.fillStyle = g2;
+  ctx.beginPath(); ctx.arc(sx,sy,r,0,Math.PI*2); ctx.fill();
+}
+function drawOrbit(c, radius, alpha){
+  ctx.strokeStyle = 'rgba(70,95,130,'+alpha+')'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let i=0;i<=90;i++){
+    const a = i/90*Math.PI*2;
+    const pt = proj(c[0]+Math.cos(a)*radius, c[1]+Math.sin(a)*radius, c[2]);
+    if(i===0) ctx.moveTo(pt[0],pt[1]); else ctx.lineTo(pt[0],pt[1]);
+  }
+  ctx.stroke();
+}
+function drawLabel(sx, sy, text, big){
+  ctx.font = (big?'12px':'10px') + " 'Segoe UI', Arial";
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  const w = ctx.measureText(text).width + 12;
+  ctx.fillRect(sx-w/2, sy-24, w, 16);
+  ctx.fillStyle = big ? '#ffd97a' : '#b9c8dc';
+  ctx.fillText(text, sx, sy-12);
+}
+
+// Красивый след: светящаяся лента, сужается и гаснет к «прошлому»,
+// части витка ближе к зрителю ярче и толще (ощущение глубины)
+function drawTrail(p){
+  const col = lighten(p[1], 0.35);
+  const R = p[2];
+  const N = Math.max(40, Math.min(480, Math.ceil(TRAIL_T*p[4]/0.15)));
+  const per = 4, CH = Math.ceil(N/per);
+  const cr = Math.cos(cam.rot), sr = Math.sin(cam.rot);
+  const depthK = Math.cos(cam.tilt);          // при взгляде вдоль оси глубины нет
+  const near = pos => 0.5 + 0.5*depthK*((pos[0]*cr - pos[1]*sr)/R);
+  const p0 = planetPos(p, simT);
+  let prev = proj(p0[0], p0[1], p0[2]);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.globalCompositeOperation = 'lighter';
+  for(let ch=0; ch<CH; ch++){
+    const age = (ch+0.5)/CH;
+    const fade = Math.pow(1-age, 1.5);
+    ctx.beginPath(); ctx.moveTo(prev[0], prev[1]);
+    let nf = 0.5;
+    for(let k=1;k<=per;k++){
+      const i = ch*per+k; if(i>N) break;
+      const q = planetPos(p, simT - TRAIL_T*i/N);
+      prev = proj(q[0], q[1], q[2]);
+      ctx.lineTo(prev[0], prev[1]);
+      nf = near(q);
+    }
+    const a = fade*(0.3+0.7*nf);
+    const w = (0.7+2.0*(1-age))*(0.75+0.5*nf);
+    ctx.strokeStyle = 'rgba('+col[0]+','+col[1]+','+col[2]+','+(0.20*a).toFixed(3)+')';
+    ctx.lineWidth = w*4.5; ctx.stroke();                       // мягкое свечение
+    ctx.strokeStyle = 'rgba('+col[0]+','+col[1]+','+col[2]+','+Math.min(1,a*1.05).toFixed(3)+')';
+    ctx.lineWidth = w; ctx.stroke();                           // яркое ядро
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+// золотой хвост Солнца
+function drawSunBeam(sun){
+  const tail = proj(0, 0, VZ*(simT - TRAIL_T*1.1));
+  if(Math.hypot(tail[0]-sun[0], tail[1]-sun[1]) < 3) return;
+  const g = ctx.createLinearGradient(sun[0], sun[1], tail[0], tail[1]);
+  g.addColorStop(0,   'rgba(255,220,130,1)');
+  g.addColorStop(0.4, 'rgba(255,172,70,0.45)');
+  g.addColorStop(1,   'rgba(255,140,50,0)');
+  ctx.lineCap = 'round'; ctx.strokeStyle = g;
+  ctx.globalCompositeOperation = 'lighter';
+  [[22,0.10],[10,0.18],[4.5,0.38],[1.8,0.95]].forEach(l=>{
+    ctx.globalAlpha = l[1]; ctx.lineWidth = l[0];
+    ctx.beginPath(); ctx.moveTo(sun[0], sun[1]); ctx.lineTo(tail[0], tail[1]); ctx.stroke();
+  });
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+}
+
+// ==================== СОЛНЦЕ (мелкозернистая текстура, красное гало) ====================
+// Текстура диска рисуется один раз в отдельный холст, потом масштабируется — быстро и детально.
+const SUN_TEX = (function(){
+  const R = 320, TAU = Math.PI*2;
+  const c = document.createElement('canvas'); c.width = c.height = R*2;
+  const x = c.getContext('2d');
+  x.translate(R, R);
+  x.save();
+  x.beginPath(); x.arc(0,0,R,0,TAU); x.clip();
+
+  // основа: яркий оранжевый, к краю краснее
+  let g = x.createRadialGradient(-R*0.08,-R*0.08,R*0.1, 0,0,R);
+  g.addColorStop(0,'#ff8c2c'); g.addColorStop(0.7,'#fb7222'); g.addColorStop(0.93,'#e65414'); g.addColorStop(1,'#bb390c');
+  x.fillStyle = g; x.fillRect(-R,-R,R*2,R*2);
+
+  const front = ()=>{               // случайная точка на видимой полусфере
+    const lon = (Math.random()-0.5)*Math.PI, lat = Math.asin(2*Math.random()-1), cl = Math.cos(lat);
+    return { X:cl*Math.sin(lon), Y:-Math.sin(lat), Z:cl*Math.cos(lon) };
+  };
+
+  // крупные мягкие неоднородности яркости
+  for(let i=0;i<150;i++){
+    const p = front(); if(p.Z < 0.1) continue;
+    const px = p.X*R, py = p.Y*R, rad = R*(0.05+Math.random()*0.15)*(0.4+p.Z);
+    const dark = Math.random() < 0.55;
+    const gg = x.createRadialGradient(px,py,0, px,py,rad);
+    gg.addColorStop(0, dark ? 'rgba(140,28,3,0.26)' : 'rgba(255,165,70,0.15)');
+    gg.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = gg; x.beginPath(); x.arc(px,py,rad,0,TAU); x.fill();
+  }
+
+  // мелкая зернистость: тёмные прожилки и светлые крапинки (корзины по прозрачности)
+  const dark = [0.22,0.32,0.46].map(a=>({a, p:new Path2D()}));
+  const lite = [0.25,0.42,0.65].map(a=>({a, p:new Path2D()}));
+  for(let i=0;i<19000;i++){
+    const p = front(); if(p.Z < 0.04) continue;
+    const isDark = Math.random() < 0.58;
+    const px = p.X*R, py = p.Y*R, ang = Math.atan2(py,px);
+    const s = R*(0.005+Math.random()*0.011)*(isDark?1:0.7);
+    const rx = s*Math.max(p.Z,0.15)*(0.8+Math.random()*0.8), ry = s*(1.3+Math.random()*1.7);
+    const rot = ang + (Math.random()-0.5)*1.4;
+    const b = (isDark?dark:lite)[Math.floor(Math.random()*3)].p;
+    b.moveTo(px+rx*Math.cos(rot), py+rx*Math.sin(rot));
+    b.ellipse(px,py,rx,ry,rot,0,TAU);
+  }
+  dark.forEach(b=>{ x.fillStyle = 'rgba(95,14,0,'+b.a+')'; x.fill(b.p); });
+  lite.forEach(b=>{ x.fillStyle = 'rgba(255,185,105,'+b.a+')'; x.fill(b.p); });
+
+  // яркие активные области (положения как на снимке)
+  [[0.54,-0.42,0.17],[-0.54,0.49,0.19],[0.89,-0.19,0.07],[-0.12,-0.62,0.05],[0.3,0.35,0.04]].forEach(a=>{
+    const px = a[0]*R, py = a[1]*R, rad = R*a[2];
+    const gg = x.createRadialGradient(px,py,0, px,py,rad*1.5);
+    gg.addColorStop(0,'rgba(255,238,200,0.95)'); gg.addColorStop(0.35,'rgba(255,170,80,0.55)'); gg.addColorStop(1,'rgba(255,100,30,0)');
+    x.fillStyle = gg; x.beginPath(); x.ellipse(px,py,rad*1.5,rad*1.1,Math.atan2(py,px),0,TAU); x.fill();
+    x.fillStyle = 'rgba(255,235,185,0.85)';
+    for(let k=0;k<70;k++){
+      const aa = Math.random()*TAU, rr = rad*1.4*Math.sqrt(Math.random());
+      x.beginPath(); x.arc(px+Math.cos(aa)*rr, py+Math.sin(aa)*rr*0.8, R*(0.002+Math.random()*0.006), 0, TAU); x.fill();
+    }
+  });
+  // россыпь белых искр по диску
+  x.fillStyle = 'rgba(255,220,165,0.8)';
+  for(let i=0;i<260;i++){
+    const p = front(); if(p.Z < 0.1) continue;
+    x.beginPath(); x.arc(p.X*R, p.Y*R, R*(0.0015+Math.random()*0.004), 0, TAU); x.fill();
+  }
+
+  // потемнение к краю
+  g = x.createRadialGradient(0,0,R*0.7, 0,0,R);
+  g.addColorStop(0,'rgba(120,20,0,0)'); g.addColorStop(1,'rgba(120,20,0,0.55)');
+  x.fillStyle = g; x.fillRect(-R,-R,R*2,R*2);
+  x.restore();
+  return c;
+})();
+
+function drawSun(cx, cy, r, t){
+  const TAU = Math.PI*2;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  // широкое тёмно-красное свечение
+  let g = ctx.createRadialGradient(cx,cy,r*0.9, cx,cy,r*5);
+  g.addColorStop(0,'rgba(255,70,15,0.3)'); g.addColorStop(1,'rgba(120,15,0,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx,cy,r*5,0,TAU); ctx.fill();
+
+  // плотное красное гало у самого края
+  g = ctx.createRadialGradient(cx,cy,r*0.96, cx,cy,r*1.9);
+  g.addColorStop(0,'rgba(255,90,18,1)'); g.addColorStop(0.2,'rgba(235,55,10,0.65)');
+  g.addColorStop(0.55,'rgba(130,22,0,0.2)'); g.addColorStop(1,'rgba(60,5,0,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx,cy,r*1.9,0,TAU); ctx.fill();
+
+  // диск (медленно вращается)
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.translate(cx, cy); ctx.rotate(t*0.012);
+  ctx.drawImage(SUN_TEX, -r, -r, r*2, r*2);
+  ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.16;   // подсветка
+  ctx.drawImage(SUN_TEX, -r, -r, r*2, r*2);
+  ctx.restore();
+}
+
+// ==================== ТЕКСТУРЫ ПЛАНЕТ И СПУТНИКОВ ====================
+const TAU = Math.PI*2;
+const rnd = (a,b)=>a+Math.random()*(b-a);
+function mkTex(draw){
+  const R = 128, c = document.createElement('canvas'); c.width = c.height = R*2;
+  const x = c.getContext('2d'); x.translate(R,R);
+  x.beginPath(); x.arc(0,0,R,0,TAU); x.clip();
+  draw(x,R); return c;
+}
+function fillDisc(x,R,col){ x.fillStyle = col; x.fillRect(-R,-R,R*2,R*2); }
+function blobAt(x,px,py,rr,rgb,alpha){
+  const g = x.createRadialGradient(px,py,0, px,py,rr);
+  g.addColorStop(0,'rgba('+rgb+','+alpha+')'); g.addColorStop(1,'rgba('+rgb+',0)');
+  x.fillStyle = g; x.beginPath(); x.arc(px,py,rr,0,TAU); x.fill();
+}
+function blobs(x,R,n,rgb,alpha,r0,r1){
+  for(let i=0;i<n;i++){
+    const a = rnd(0,TAU), d = R*Math.sqrt(Math.random());
+    blobAt(x, Math.cos(a)*d, Math.sin(a)*d, R*rnd(r0,r1), rgb, alpha);
+  }
+}
+function craters(x,R,n,s0,s1,dk){
+  dk = dk || 0.28;
+  for(let i=0;i<n;i++){
+    const a = rnd(0,TAU), d = R*Math.sqrt(Math.random())*0.97;
+    const px = Math.cos(a)*d, py = Math.sin(a)*d, rr = R*rnd(s0,s1);
+    const g = x.createRadialGradient(px,py,rr*0.1, px,py,rr);
+    g.addColorStop(0,'rgba(0,0,0,'+dk+')'); g.addColorStop(0.8,'rgba(0,0,0,'+(dk*0.4)+')'); g.addColorStop(1,'rgba(0,0,0,0)');
+    x.fillStyle = g; x.beginPath(); x.arc(px,py,rr,0,TAU); x.fill();
+    x.strokeStyle = 'rgba(255,255,255,0.14)'; x.lineWidth = Math.max(0.6, rr*0.12);
+    x.beginPath(); x.arc(px-rr*0.08, py-rr*0.08, rr*0.92, Math.PI*0.9, Math.PI*1.9); x.stroke();
+  }
+}
+// горизонтальные волнистые полосы (газовые гиганты)
+function bandsFill(x,R,lights,darks,w0,w1,amp){
+  let y = -R, k = 0;
+  while(y < R){
+    const h = R*rnd(w0,w1), set = (k%2) ? darks : lights;
+    const ph = rnd(0,TAU), f = rnd(0.02,0.06), am = amp*rnd(0.5,1.4);
+    x.fillStyle = set[Math.floor(Math.random()*set.length)];
+    x.beginPath();
+    for(let xx=-R; xx<=R; xx+=6){ const yy = y + Math.sin(xx*f+ph)*am; if(xx===-R) x.moveTo(xx,yy); else x.lineTo(xx,yy); }
+    for(let xx=R; xx>=-R; xx-=6){ x.lineTo(xx, y + h + Math.sin(xx*f*1.3+ph+1)*am); }
+    x.closePath(); x.fill(); y += h; k++;
+  }
+}
+function streaks(x,R,n,col,a0,a1,l0,l1){
+  x.fillStyle = col;
+  for(let i=0;i<n;i++){
+    x.globalAlpha = rnd(a0,a1);
+    x.beginPath(); x.ellipse(rnd(-R,R), rnd(-R,R), R*rnd(l0,l1), R*rnd(0.008,0.025), 0, 0, TAU); x.fill();
+  }
+  x.globalAlpha = 1;
+}
+function land(x,R,pts,col){
+  x.fillStyle = col; x.strokeStyle = col; x.lineJoin = 'round'; x.lineWidth = R*0.05;
+  x.beginPath();
+  pts.forEach((p,i)=>{ if(i) x.lineTo(p[0]*R,p[1]*R); else x.moveTo(p[0]*R,p[1]*R); });
+  x.closePath(); x.fill(); x.stroke();
+}
+
+const PLANET_TEX = {
+  mercury: mkTex((x,R)=>{
+    fillDisc(x,R,'#8f8880');
+    blobs(x,R,26,'60,55,50',0.35,0.1,0.3); blobs(x,R,22,'185,180,168',0.3,0.08,0.22);
+    craters(x,R,90,0.015,0.1,0.3);
+  }),
+  venus: mkTex((x,R)=>{
+    fillDisc(x,R,'#dfc08a');
+    blobs(x,R,22,'245,222,170',0.45,0.12,0.35); blobs(x,R,18,'190,150,95',0.32,0.1,0.3);
+    for(let i=0;i<55;i++){
+      x.strokeStyle = Math.random()<0.5 ? 'rgba(250,230,185,0.28)' : 'rgba(170,130,80,0.22)';
+      x.lineWidth = R*rnd(0.02,0.07);
+      x.beginPath(); x.arc(rnd(-R*1.2,R*1.2), rnd(-R*1.2,R*1.2), R*rnd(0.3,0.9), rnd(0,TAU), rnd(0,TAU)+1.2); x.stroke();
+    }
+  }),
+  earth: mkTex((x,R)=>{
+    let g = x.createRadialGradient(-R*0.2,-R*0.2,R*0.1, 0,0,R);
+    g.addColorStop(0,'#3280dc'); g.addColorStop(1,'#16409a'); x.fillStyle = g; x.fillRect(-R,-R,R*2,R*2);
+    const G = '#3f8140';
+    land(x,R,[[0.05,-0.2],[0.2,-0.28],[0.32,-0.12],[0.45,0.0],[0.38,0.15],[0.3,0.38],[0.2,0.55],[0.1,0.5],[0.05,0.3],[-0.08,0.15],[-0.18,0.0],[-0.12,-0.15]],G);
+    land(x,R,[[-0.1,-0.45],[0.05,-0.55],[0.2,-0.5],[0.3,-0.4],[0.15,-0.3],[0.0,-0.28],[-0.12,-0.3]],'#4a8a3d');
+    land(x,R,[[0.3,-0.55],[0.6,-0.5],[0.85,-0.3],[0.8,-0.1],[0.6,-0.15],[0.45,-0.05],[0.35,-0.25]],'#5a8a45');
+    land(x,R,[[-0.65,0.0],[-0.45,0.05],[-0.38,0.25],[-0.45,0.5],[-0.55,0.7],[-0.62,0.45],[-0.7,0.2]],'#2f7a3a');
+    land(x,R,[[-0.9,-0.4],[-0.65,-0.55],[-0.5,-0.45],[-0.45,-0.25],[-0.6,-0.1],[-0.75,-0.15]],'#4a8442');
+    blobAt(x,R*0.18,-R*0.12,R*0.2,'205,170,95',0.65); blobAt(x,R*0.52,-R*0.25,R*0.14,'200,165,95',0.5);
+    blobAt(x,R*0.22,R*0.22,R*0.13,'25,90,45',0.6);  blobAt(x,-R*0.5,R*0.3,R*0.12,'25,90,45',0.6);
+    x.fillStyle = 'rgba(245,250,255,0.95)';
+    x.beginPath(); x.ellipse(0,-R*0.97,R*0.5,R*0.16,0,0,TAU); x.fill();
+    x.beginPath(); x.ellipse(0, R*0.98,R*0.55,R*0.15,0,0,TAU); x.fill();
+    for(let i=0;i<46;i++){
+      x.strokeStyle = 'rgba(255,255,255,'+rnd(0.2,0.5)+')'; x.lineWidth = R*rnd(0.02,0.06); x.lineCap = 'round';
+      const a0 = rnd(0,TAU);
+      x.beginPath(); x.arc(rnd(-R,R), rnd(-R,R), R*rnd(0.15,0.5), a0, a0+rnd(0.8,1.6)); x.stroke();
+    }
+  }),
+  moon: mkTex((x,R)=>{
+    fillDisc(x,R,'#a9a9a9');
+    blobs(x,R,7,'70,70,76',0.55,0.18,0.38); blobs(x,R,16,'205,205,205',0.3,0.08,0.2);
+    craters(x,R,80,0.015,0.09,0.3);
+  }),
+  mars: mkTex((x,R)=>{
+    fillDisc(x,R,'#c2602f');
+    blobs(x,R,10,'95,40,20',0.5,0.16,0.36); blobs(x,R,14,'232,152,92',0.35,0.1,0.28);
+    craters(x,R,18,0.02,0.08,0.18);
+    x.fillStyle = 'rgba(255,255,255,0.92)';
+    x.beginPath(); x.ellipse(0,-R*0.96,R*0.34,R*0.14,0,0,TAU); x.fill();
+    x.beginPath(); x.ellipse(0, R*0.98,R*0.22,R*0.09,0,0,TAU); x.fill();
+  }),
+  phobos: mkTex((x,R)=>{ fillDisc(x,R,'#7b6f66'); blobs(x,R,8,'40,35,30',0.4,0.15,0.3); craters(x,R,30,0.04,0.16,0.35); }),
+  deimos: mkTex((x,R)=>{ fillDisc(x,R,'#8c8073'); blobs(x,R,8,'60,55,50',0.3,0.15,0.3); craters(x,R,18,0.04,0.14,0.25); }),
+  jupiter: mkTex((x,R)=>{
+    fillDisc(x,R,'#d9b98f');
+    bandsFill(x,R,['#ecd9b6','#e2c79c','#f0e2c6'],['#a8764c','#b88a5e','#9a6a44'],0.07,0.13,3.5);
+    streaks(x,R,110,'#f4e8d0',0.15,0.4,0.05,0.2); streaks(x,R,90,'#7a4a2c',0.12,0.3,0.05,0.2);
+    x.fillStyle = '#b4472a'; x.beginPath(); x.ellipse(R*0.2,R*0.32,R*0.3,R*0.15,0,0,TAU); x.fill();
+    x.fillStyle = '#cf6a3d'; x.beginPath(); x.ellipse(R*0.2,R*0.32,R*0.19,R*0.09,0,0,TAU); x.fill();
+    x.strokeStyle = 'rgba(240,215,175,0.7)'; x.lineWidth = R*0.025;
+    x.beginPath(); x.ellipse(R*0.2,R*0.32,R*0.34,R*0.19,0,0,TAU); x.stroke();
+  }),
+  io: mkTex((x,R)=>{
+    fillDisc(x,R,'#e3c848');
+    blobs(x,R,14,'225,115,35',0.55,0.1,0.28); blobs(x,R,10,'250,240,200',0.4,0.1,0.25);
+    for(let i=0;i<18;i++){ const a=rnd(0,TAU), d=R*0.85*Math.sqrt(Math.random()); blobAt(x,Math.cos(a)*d,Math.sin(a)*d,R*rnd(0.03,0.07),'45,30,20',0.9); }
+  }),
+  europa: mkTex((x,R)=>{
+    fillDisc(x,R,'#dcd3c1'); blobs(x,R,12,'170,130,95',0.3,0.1,0.3);
+    x.strokeStyle = 'rgba(130,80,50,0.55)'; x.lineWidth = Math.max(0.8,R*0.012);
+    for(let i=0;i<34;i++){ x.beginPath(); x.moveTo(rnd(-R,R),rnd(-R,R)); x.quadraticCurveTo(rnd(-R,R),rnd(-R,R),rnd(-R,R),rnd(-R,R)); x.stroke(); }
+  }),
+  ganymede: mkTex((x,R)=>{
+    fillDisc(x,R,'#7e756a'); blobs(x,R,14,'175,165,150',0.4,0.1,0.28); blobs(x,R,10,'50,45,40',0.35,0.12,0.3);
+    craters(x,R,50,0.02,0.09,0.25);
+  }),
+  callisto: mkTex((x,R)=>{
+    fillDisc(x,R,'#5f564d'); blobs(x,R,10,'35,30,28',0.3,0.12,0.3);
+    craters(x,R,130,0.012,0.08,0.3);
+    x.fillStyle = 'rgba(235,235,235,0.55)';
+    for(let i=0;i<40;i++){ x.beginPath(); x.arc(rnd(-R,R),rnd(-R,R),R*rnd(0.005,0.014),0,TAU); x.fill(); }
+  }),
+  saturn: mkTex((x,R)=>{
+    fillDisc(x,R,'#e6d4a2');
+    bandsFill(x,R,['#efe0b6','#eadaa8','#f3e7c4'],['#d6bd86','#cfb27a','#dcc592'],0.06,0.14,1.6);
+    streaks(x,R,50,'#fff4d8',0.1,0.25,0.08,0.25);
+  }),
+  titan: mkTex((x,R)=>{
+    fillDisc(x,R,'#d49a3c'); blobs(x,R,14,'255,205,120',0.35,0.15,0.4); blobs(x,R,10,'150,90,25',0.3,0.12,0.3);
+  }),
+  uranus: mkTex((x,R)=>{
+    fillDisc(x,R,'#a6e3e6');
+    bandsFill(x,R,['#b4eaec','#aee6e9'],['#9bd8dc','#a0dde0'],0.15,0.3,1.2);
+    blobAt(x,0,-R*0.9,R*0.7,'255,255,255',0.25);
+  }),
+  neptune: mkTex((x,R)=>{
+    fillDisc(x,R,'#2f55c8');
+    bandsFill(x,R,['#3a62d6','#3359cc'],['#2748b0','#2a4fb8'],0.1,0.2,2.2);
+    x.fillStyle = '#1b2f80'; x.beginPath(); x.ellipse(-R*0.25,R*0.25,R*0.2,R*0.1,0,0,TAU); x.fill();
+    streaks(x,R,16,'#e2edff',0.35,0.7,0.06,0.2);
+  }),
+  triton: mkTex((x,R)=>{
+    fillDisc(x,R,'#c9b8b0'); blobs(x,R,12,'215,165,155',0.4,0.12,0.3); blobs(x,R,10,'90,75,70',0.3,0.1,0.25);
+    craters(x,R,20,0.02,0.07,0.15);
+  })
+};
+
+// сфера с освещением со стороны Солнца
+function drawSphere(px, py, r, key, sunS){
+  const tex = PLANET_TEX[key];
+  if(key==='earth' || key==='venus' || key==='titan'){   // атмосфера
+    const col = key==='earth' ? '110,170,255' : (key==='venus' ? '255,220,150' : '255,190,90');
+    const g = ctx.createRadialGradient(px,py,r*0.95, px,py,r*1.28);
+    g.addColorStop(0,'rgba('+col+',0.5)'); g.addColorStop(1,'rgba('+col+',0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px,py,r*1.28,0,TAU); ctx.fill();
+  }
+  ctx.save();
+  ctx.beginPath(); ctx.arc(px,py,r,0,TAU); ctx.clip();
+  if(tex) ctx.drawImage(tex, px-r, py-r, r*2, r*2);
+  else { ctx.fillStyle = '#b0b8c0'; ctx.fillRect(px-r,py-r,r*2,r*2); }
+  let dx = sunS[0]-px, dy = sunS[1]-py; const d = Math.hypot(dx,dy) || 1; dx /= d; dy /= d;
+  const lx = px + dx*r*0.5, ly = py + dy*r*0.5;
+  const sh = ctx.createRadialGradient(lx,ly,r*0.15, lx,ly,r*1.65);
+  sh.addColorStop(0,'rgba(0,0,0,0)'); sh.addColorStop(0.5,'rgba(0,0,6,0.12)');
+  sh.addColorStop(0.8,'rgba(0,0,10,0.62)'); sh.addColorStop(1,'rgba(0,0,12,0.9)');
+  ctx.fillStyle = sh; ctx.fillRect(px-r,py-r,r*2,r*2);
+  ctx.restore();
+}
+// кольца Сатурна (задняя половина — до планеты, передняя — после)
+function drawRings(px, py, r, front){
+  ctx.save(); ctx.translate(px,py); ctx.rotate(-0.38); ctx.scale(1,0.34);
+  [[1.28,1.5,'rgba(150,130,100,0.35)'],[1.52,1.98,'rgba(226,204,152,0.92)'],
+   [2.03,2.32,'rgba(190,168,125,0.78)'],[2.36,2.42,'rgba(170,150,110,0.4)']].forEach(d=>{
+    ctx.strokeStyle = d[2]; ctx.lineWidth = (d[1]-d[0])*r;
+    ctx.beginPath(); ctx.arc(0,0,(d[0]+d[1])/2*r, front?0:Math.PI, front?Math.PI:TAU); ctx.stroke();
+  });
+  ctx.restore();
+}
+function drawUranusRings(px, py, r){
+  ctx.save(); ctx.translate(px,py); ctx.rotate(1.35); ctx.scale(1,0.28);
+  ctx.strokeStyle = 'rgba(190,215,225,0.4)'; ctx.lineWidth = Math.max(0.6, r*0.03);
+  [1.5,1.7,1.9].forEach(k=>{ ctx.beginPath(); ctx.arc(0,0,k*r,0,TAU); ctx.stroke(); });
+  ctx.restore();
+}
+
+function render(dt){
+  ctx.fillStyle = '#020308';
+  ctx.fillRect(0,0,W,H);
+  const ctS = Math.cos(cam.tilt);
+  const ct = Math.max(Math.abs(ctS), 0.15);
+
+  // ---- Млечный Путь ----
+  ctx.save();
+  ctx.translate(W/2, H/2); ctx.rotate(0.5);
+  const mg = ctx.createLinearGradient(0,-H*0.35, 0, H*0.35);
+  mg.addColorStop(0,'rgba(40,55,110,0)');
+  mg.addColorStop(0.5,'rgba(80,100,170,0.16)');
+  mg.addColorStop(1,'rgba(40,55,110,0)');
+  ctx.fillStyle = mg;
+  ctx.fillRect(-W, -H*0.35, W*2, H*0.7);
+  ctx.restore();
+
+  // ---- далёкие звёзды (плывут назад с параллаксом) ----
+  const Wp = W + 40;
+  const t = performance.now();
+  bgStars.forEach(s=>{
+    const sx = (((s.u*Wp - cam.z*0.25*s.d*ctS) % Wp) + Wp) % Wp - 20;
+    const sy = s.v*H;
+    ctx.globalAlpha = 0.5 + 0.45*Math.sin(t/900 + s.tw);
+    ctx.fillStyle = s.col;
+    ctx.fillRect(sx, sy, s.sz, s.sz);
+  });
+  ctx.globalAlpha = 1;
+
+  // ---- близкие звёзды ----
+  NEAR_STARS.forEach(st=>{
+    const sx = (((st.u*Wp - cam.z*0.06*ctS) % Wp) + Wp) % Wp - 20;
+    const sy = st.v*H;
+    const g = ctx.createRadialGradient(sx,sy,0,sx,sy,st.sz*5);
+    g.addColorStop(0, st.col); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.8; ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(sx,sy,st.sz*5,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1; ctx.fillStyle = st.col;
+    ctx.beginPath(); ctx.arc(sx,sy,st.sz,0,Math.PI*2); ctx.fill();
+    if(cam.scale > 0.4) drawLabel(sx, sy+8, st.name, false);
+  });
+
+  const sp = sunPos(simT);
+  const sunS = proj(sp[0], sp[1], sp[2]);
+
+  // ---- космическая пыль (даёт ощущение скорости) ----
+  {
+    const tailLen = Math.max(-18, Math.min(18, VZ*speed*ctS*cam.scale*0.3));
+    ctx.globalCompositeOperation = 'lighter';
+    DUST.forEach(d=>{
+      const zrel = (((d.z0 - cam.z) % DUST_L) + DUST_L) % DUST_L - DUST_L/2;
+      const pt = proj(d.x, d.y, cam.z + zrel);
+      if(pt[0]<-30||pt[0]>W+30||pt[1]<-5||pt[1]>H+5) return;
+      ctx.globalAlpha = 0.18 + 0.2*d.sz;
+      ctx.fillStyle = d.col;
+      ctx.fillRect(pt[0]-Math.max(tailLen,0), pt[1], Math.abs(tailLen)+d.sz, d.sz);
+    });
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- текущие орбиты (в плоскости, где сейчас Солнце) ----
+  PLANETS.forEach(p=>drawOrbit(sp, p[2], 0.26));
+  MOONS.forEach(m=>{
+    const pp = planetPos(planetByKey[m[1]], simT);
+    drawOrbit(pp, m[3], 0.3);
+  });
+
+  // ---- пояс астероидов ----
+  const rs = Math.min(cam.scale,2)*0.8+0.4;
+  ctx.fillStyle = 'rgba(170,155,130,0.7)';
+  beltRocks.forEach(rk=>{
+    const a = rk.a + simT*rk.sp;
+    const pt = proj(Math.cos(a)*rk.r, Math.sin(a)*rk.r, sp[2]);
+    if(pt[0]<-10||pt[0]>W+10||pt[1]<-10||pt[1]>H+10) return;
+    ctx.fillRect(pt[0], pt[1], rs*rk.sz, rs*rk.sz);
+  });
+
+  // ---- следы ----
+  if(trailsOn){
+    drawSunBeam(sunS);
+    PLANETS.forEach(drawTrail);
+  }
+
+  // ---- тела: сортировка по глубине (дальние первыми) ----
+  const items = [];
+  PLANETS.forEach(p=>{
+    const pos = planetPos(p, simT);
+    const pt = proj(pos[0], pos[1], pos[2]);
+    items.push({d:pt[2], fn:()=>{
+      const r = Math.max(p[3]*cam.scale, 3);
+      if(trailsOn){
+        const hex = '#'+p[1].toString(16).padStart(6,'0');
+        const gg = ctx.createRadialGradient(pt[0],pt[1],r*0.4, pt[0],pt[1],r*3.2);
+        gg.addColorStop(0,hex); gg.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.globalAlpha = 0.3; ctx.fillStyle = gg;
+        ctx.beginPath(); ctx.arc(pt[0],pt[1],r*3.2,0,TAU); ctx.fill(); ctx.globalAlpha = 1;
+      }
+      if(p[0]==='saturn') drawRings(pt[0], pt[1], r, false);
+      drawSphere(pt[0], pt[1], r, p[0], sunS);
+      if(p[0]==='saturn') drawRings(pt[0], pt[1], r, true);
+      if(p[0]==='uranus') drawUranusRings(pt[0], pt[1], r);
+      drawLabel(pt[0], pt[1]-r, INFO[p[0]].name, p[3]>8);
+      return {x:pt[0], y:pt[1], r:Math.max(r+6,14), key:p[0]};
+    }});
+  });
+  MOONS.forEach(m=>{
+    const pos = moonPos(m, simT);
+    const pt = proj(pos[0], pos[1], pos[2]);
+    if(pt[0]<-20||pt[0]>W+20||pt[1]<-20||pt[1]>H+20) return;
+    items.push({d:pt[2], fn:()=>{
+      const r = Math.max(m[2]*cam.scale, 2);
+      drawSphere(pt[0], pt[1], r, m[0], sunS);
+      if(cam.scale>1.6) drawLabel(pt[0], pt[1]-r, INFO[m[0]].name, false);
+      return {x:pt[0], y:pt[1], r:Math.max(r+5,10), key:m[0]};
+    }});
+  });
+  items.push({d:sunS[2], fn:()=>{
+    const r = Math.max(SUN_R*cam.scale, 6);
+    drawSun(sunS[0], sunS[1], r, simT);
+    drawLabel(sunS[0], sunS[1]-r, 'Солнце', true);
+    return {x:sunS[0], y:sunS[1], r:Math.max(r+8,18), key:'sun'};
+  }});
+  items.sort((a,b)=>b.d-a.d);
+
+  // пояс проверяется последним (приоритет у планет/спутников)
+  const pick = [{belt:true, x:sunS[0], y:sunS[1], st:Math.sin(cam.tilt)}];
+  items.forEach(it=>pick.push(it.fn()));
+  window.__pick = pick;
+}
+
+// ==================== ИНФО-ПАНЕЛЬ ====================
+const panel = document.getElementById('info-panel');
+function openInfo(key){
+  const d = INFO[key]; if(!d) return;
+  document.getElementById('obj-name').textContent = d.name;
+  document.getElementById('obj-type').textContent = d.type;
+  document.getElementById('obj-desc').textContent = d.desc;
+  document.getElementById('obj-table').innerHTML =
+    d.facts.map(f=>'<tr><td>'+f[0]+'</td><td>'+f[1]+'</td></tr>').join('');
+  const ex = document.getElementById('obj-extra');
+  ex.innerHTML = d.extra ? '<h3>'+d.extra.title+'</h3>' +
+    d.extra.items.map(i=>'<table><tr><td style="color:#ffd97a;width:38%">'+i[0]+'</td><td>'+i[1]+'</td></tr></table>').join('') : '';
+  panel.classList.add('open');
+}
+document.getElementById('close-btn').onclick = ()=>{ panel.classList.remove('open'); focusObj=null; };
+addEventListener('keydown', e=>{ if(e.key==='Escape'){ panel.classList.remove('open'); focusObj=null; } });
+document.getElementById('belt-btn').onclick = ()=>{
+  openInfo('belt');
+  focusObj = {getPos:()=>sunPos(simT), dist:340};
+};
+document.getElementById('trail-btn').onclick = (e)=>{
+  trailsOn = !trailsOn;
+  e.currentTarget.textContent = trailsOn ? '🌀 Следы: вкл' : '🌀 Следы: выкл';
+};
+document.getElementById('follow-btn').onclick = (e)=>{
+  followSun = !followSun;
+  e.currentTarget.textContent = followSun ? '🎥 Камера: за Солнцем' : '🎥 Камера: свободная';
+  if(followSun){ focusObj = null; const c0 = Math.cos(cam.tilt); cam.z = sunPos(simT)[2] - (Math.abs(c0)>0.3 ? 0.2*W/(cam.scale*c0) : 0); }
+};
+
+// ==================== УПРАВЛЕНИЕ МЫШЬЮ ====================
+let focusObj = null;
+let drag = null;
+cv.addEventListener('contextmenu', e=>e.preventDefault());
+
+cv.addEventListener('pointerdown', e=>{
+  cv.setPointerCapture(e.pointerId);
+  drag = { x:e.clientX, y:e.clientY, rot:cammotion(e), moved:0 };
+  cv.classList.add('dragging');
+});
+function cammotion(e){ return e.button===2 || e.shiftKey ? 'rot' : 'pan'; }
+
+cv.addEventListener('pointermove', e=>{
+  if(drag){
+    const dx = e.clientX-drag.x, dy = e.clientY-drag.y;
+    drag.moved += Math.abs(dx)+Math.abs(dy);
+    if(drag.rot==='rot'){
+      cam.tilt += dx*0.004;   // без ограничений: полный оборот 360°
+      cam.rot += dy*0.005;
+    } else {
+      const c = Math.cos(-cam.rot), s = Math.sin(-cam.rot);
+      const st = Math.sin(cam.tilt), ct = Math.cos(cam.tilt);
+      const dxr = -dx*st/cam.scale, dyr = -dy/cam.scale;
+      cam.x += dxr*c - dyr*s;
+      cam.y += dxr*s + dyr*c;
+      cam.z += -dx*ct/cam.scale;
+    }
+    drag.x = e.clientX; drag.y = e.clientY;
+    focusObj = null;
+    return;
+  }
+  const h = hitTest(e.clientX, e.clientY);
+  const lb = document.getElementById('label');
+  if(h){
+    lb.style.display='block'; lb.style.left=e.clientX+'px'; lb.style.top=e.clientY+'px';
+    lb.textContent = INFO[h].name;
+    cv.style.cursor = 'pointer';
+  } else { lb.style.display='none'; cv.style.cursor='grab'; }
+});
+
+cv.addEventListener('pointerup', e=>{
+  cv.classList.remove('dragging');
+  const wasClick = drag && drag.moved < 6;
+  drag = null;
+  if(!wasClick) return;
+  const h = hitTest(e.clientX, e.clientY);
+  if(h){
+    openInfo(h);
+    if(h==='sun') focusObj = {getPos:()=>sunPos(simT), dist:110};
+    else if(planetByKey[h]) focusObj = {getPos:()=>planetPos(planetByKey[h], simT), dist:planetByKey[h][3]*8};
+    else if(moonByKey[h]) focusObj = {getPos:()=>moonPos(moonByKey[h], simT), dist:40};
+    else if(NEAR_STARS.some(s=>s.key===h)) focusObj = null;
+  } else { panel.classList.remove('open'); focusObj=null; }
+});
+
+function hitTest(sx, sy){
+  const pick = window.__pick || [];
+  for(let i=pick.length-1;i>=0;i--){
+    const p = pick[i];
+    if(p.belt){
+      if(Math.abs(p.st) < 0.2) continue;
+      const rho = Math.hypot((sx-p.x)/(cam.scale*p.st), (sy-p.y)/cam.scale);
+      if(rho>247 && rho<318) return 'belt';
+      continue;
+    }
+    if(Math.hypot(sx-p.x, sy-p.y) <= p.r) return p.key;
+  }
+  return null;
+}
+
+// зум колесом (к курсору, если ракурс позволяет)
+cv.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const f = Math.exp(-e.deltaY*0.0012);
+  const before = s2plane(e.clientX, e.clientY);
+  cam.scale = Math.min(8, Math.max(0.08, cam.scale*f));
+  const after = s2plane(e.clientX, e.clientY);
+  if(before && after){ cam.x += before[0]-after[0]; cam.y += before[1]-after[1]; }
+  focusObj = null;
+}, {passive:false});
+
+// скорость симуляции
+function setSpeed(v){
+  speed = Math.min(8, Math.max(0, v));
+  document.getElementById('speed-val').textContent = '×' + (Math.round(speed*10)/10);
+}
+document.getElementById('spd-up').onclick = ()=>setSpeed(speed*1.6);
+document.getElementById('spd-down').onclick = ()=>setSpeed(speed/1.6);
+document.getElementById('spd-reset').onclick = ()=>{
+  homeCam(); focusObj = null; panel.classList.remove('open');
+};
+
+// плавный подлёт к объекту
+function updateFocus(dt){
+  if(!focusObj) return;
+  const p = focusObj.getPos();
+  const k = 1 - Math.pow(0.001, dt);
+  cam.x += (p[0]-cam.x)*k;
+  cam.y += (p[1]-cam.y)*k;
+  cam.z += (p[2]-cam.z)*k;
+  const targetScale = Math.min(8, Math.max(0.3, 200/focusObj.dist*0.6));
+  cam.scale += (targetScale-cam.scale)*k*0.6;
+}
+
+// стрелки клавиатуры тоже вращают (для тачпадов без ПКМ)
+addEventListener('keydown', e=>{
+  const k = e.key;
+  if(k==='ArrowLeft')  cam.tilt -= 0.08;
+  else if(k==='ArrowRight') cam.tilt += 0.08;
+  else if(k==='ArrowUp')    cam.rot -= 0.08;
+  else if(k==='ArrowDown')  cam.rot += 0.08;
+  else return;
+  e.preventDefault();
+});
+
+// ==================== ЦИКЛ ====================
+let last = performance.now();
+function loop(now){
+  const dt = Math.min((now-last)/1000, 0.05); last = now;
+  const ds = dt*speed;
+  simT += ds;
+  if(followSun) cam.z += VZ*ds;   // камера летит вместе с Солнцем
+  updateFocus(dt);
+  render(dt);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
